@@ -1,93 +1,105 @@
-# Standalone App Template
+# ESN Porto App Template
 
-A Next.js 15 template for building apps on the shared Supabase infrastructure with isolated PostgreSQL schemas.
+A ready-to-use template for building web apps with user authentication and beautiful UI.
 
-## Quick Start
+## What's This?
 
-### 1. Copy this template
+This template gives you a **fully working web app** out of the box:
+
+- Login & signup pages
+- User dashboard
+- Admin features
+- Modern, responsive design
+- Connected to our shared database
+
+Just customize it for your needs!
+
+## Quick Links
+
+| Guide | For whom | Description |
+|-------|----------|-------------|
+| [Getting Started](docs/GETTING_STARTED.md) | Everyone | Step-by-step setup guide |
+| [Concepts Explained](docs/CONCEPTS.md) | Beginners | What everything means |
+| [Creating Projects](docs/CREATING_NEW_PROJECT.md) | Developers | Technical setup guide |
+| [Architecture](docs/ARCHITECTURE.md) | Developers | How it all works |
+
+## 5-Minute Setup
 
 ```bash
-cp -r template my-new-app
-cd my-new-app
-```
+# 1. Clone the template
+git clone https://github.com/ESN-Porto/app-template.git my-app
+cd my-app
 
-### 2. Configure environment
+# 2. Install dependencies
+npm install
 
-```bash
+# 3. Configure (copy .env.example to .env and fill in values)
 cp .env.example .env
+
+# 4. Run!
+npm run dev
 ```
 
-Edit `.env` with your project settings:
-- `NEXT_PUBLIC_PROJECT_SLUG` - Your project identifier
-- `NEXT_PUBLIC_SUPABASE_SCHEMA` - Your database schema
-
-### 3. Register your project in the database
-
-```sql
-INSERT INTO public.projects (slug, name, access_level, allow_signup)
-VALUES ('my_project', 'My Project', 'staff_only', false);
-```
-
-### 4. Create your schema
-
-```sql
-CREATE SCHEMA IF NOT EXISTS my_project;
-GRANT USAGE ON SCHEMA my_project TO authenticated, service_role;
-GRANT ALL ON ALL TABLES IN SCHEMA my_project TO authenticated, service_role;
-```
-
-### 5. Install and run
-
-```bash
-pnpm install
-pnpm dev
-```
+Open http://localhost:3000 and you're ready to go!
 
 ## Features
 
-- **Authentication** - Login, signup, password reset
-- **Authorization** - Project-based access control
-- **Middleware** - Automatic auth + project access verification
-- **TypeScript** - Full type safety
-- **Tailwind CSS** - Utility-first styling
+| Feature | Description |
+|---------|-------------|
+| **Authentication** | Login, signup, password reset |
+| **Access Control** | Public, staff-only, or admin-only apps |
+| **Admin Dashboard** | Different UI for admins vs users |
+| **Modern Design** | Clean UI with gradients and animations |
+| **Database Ready** | Connected to Supabase |
+| **TypeScript** | Type-safe code |
 
-## Project Structure
+## Screenshots
 
-```
-├── app/
-│   ├── (auth)/         # Auth pages
-│   ├── (protected)/    # Protected pages
-│   └── ...
-├── lib/
-│   ├── supabase/       # Database clients
-│   └── auth/           # Permission helpers
-├── components/         # React components
-└── types/              # TypeScript types
-```
+### Login Page
+Clean login with signup tabs, icons, and gradient buttons.
 
-## Documentation
+### User Dashboard
+Welcome banner, quick actions, and user info.
 
-- [Architecture Overview](../docs/ARCHITECTURE.md)
-- [Creating New Projects](../docs/CREATING_NEW_PROJECT.md)
-- [AI Instructions](.claude/instructions.md)
+### Admin Dashboard
+Stats overview, admin actions, recent activity feed.
 
 ## Access Levels
 
-| Level | Description |
-|-------|-------------|
-| `public` | Any authenticated user |
-| `staff_only` | Only ESN volunteers/admins |
+| Level | Who can access |
+|-------|----------------|
+| `public` | Anyone who signs up |
+| `staff_only` | ESN volunteers & admins |
 | `admin_only` | Only ESN admins |
-| `custom` | Explicit user list |
+| `custom` | Manually invited users |
 
-## Development
+## Tech Stack
 
-```bash
-pnpm dev      # Start dev server
-pnpm build    # Build for production
-pnpm lint     # Run linter
+- **Framework**: Next.js 15 (React)
+- **Styling**: Tailwind CSS
+- **Database**: Supabase (PostgreSQL)
+- **Auth**: Supabase Auth
+- **Language**: TypeScript
+
+## File Structure
+
+```
+app/               → Pages users see
+├── (auth)/        → Login & signup
+├── (protected)/   → Dashboard & app pages
+lib/               → Helper code
+├── supabase/      → Database connection
+├── auth/          → Permission helpers
+docs/              → Documentation
 ```
 
 ## Need Help?
 
-Check the [AI Instructions](.claude/instructions.md) for detailed context about the codebase.
+1. Check the [Getting Started Guide](docs/GETTING_STARTED.md)
+2. Read the [Concepts Explained](docs/CONCEPTS.md)
+3. Ask in the ESN Porto tech channel
+4. Use Claude AI - it knows this codebase!
+
+## License
+
+Internal ESN Porto use.
