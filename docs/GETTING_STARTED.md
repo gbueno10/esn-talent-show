@@ -199,6 +199,15 @@ Once your app is running, you can:
 2. **Add new pages** - Create new folders in `app/(protected)/`
 3. **Change the home page** - Edit `app/page.tsx`
 4. **Modify the dashboard** - Edit `app/(protected)/dashboard/page.tsx`
+5. **Add backend logic** - Create API routes in `app/api/`
+
+### Important: Use API Routes for Security
+
+When you need to **create, update, or delete data**, always use the `app/api/` folder.
+
+Why? Code in `app/api/` runs on the server and is hidden from users. Code in regular pages can be seen by anyone.
+
+See `app/api/README.md` for examples.
 
 ### Need Help?
 

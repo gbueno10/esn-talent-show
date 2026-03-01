@@ -84,14 +84,24 @@ Stats overview, admin actions, recent activity feed.
 ## File Structure
 
 ```
-app/               → Pages users see
-├── (auth)/        → Login & signup
+app/
+├── api/           → ⚠️ Server-side routes (secure operations)
+├── (auth)/        → Login & signup pages
 ├── (protected)/   → Dashboard & app pages
-lib/               → Helper code
+lib/
 ├── supabase/      → Database connection
 ├── auth/          → Permission helpers
 docs/              → Documentation
 ```
+
+## Security: Use API Routes
+
+**Always use `/app/api/` for sensitive operations:**
+- Creating, updating, deleting data
+- Admin-only actions
+- Anything with secret keys
+
+See [app/api/README.md](app/api/README.md) for examples.
 
 ## Need Help?
 

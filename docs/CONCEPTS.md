@@ -222,6 +222,36 @@ User clicks link → Middleware runs → Page loads
 
 If the checks fail, users are redirected to login or an error page.
 
+### API Routes (`/app/api/`)
+
+A special folder for **server-side code** that users can't see.
+
+```
+User clicks "Delete" button
+        │
+        ▼
+   Browser calls /api/items/123
+        │
+        ▼
+   Server checks: "Are they allowed to delete?"
+        │
+   ┌────┴────┐
+  Yes       No
+   │         │
+   ▼         ▼
+ Delete   Return error
+  item    "Forbidden"
+```
+
+**Why use API routes?**
+- Code runs on the server (hidden from users)
+- Can use secret keys safely
+- Can verify permissions before acting
+
+**Rule of thumb:**
+- **Reading data** → OK in regular pages
+- **Changing data** (create/update/delete) → Always use `/api/`
+
 ---
 
 ## Security Basics
