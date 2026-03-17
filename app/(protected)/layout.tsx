@@ -35,10 +35,10 @@ export default async function ProtectedLayout({
             <div className="flex items-center gap-4">
               {isAdmin && (
                 <a
-                  href="/admin"
+                  href="/talent-admin"
                   className="text-sm text-gray-600 hover:text-gray-900"
                 >
-                  Admin
+                  Talent Admin
                 </a>
               )}
               <span className="text-sm text-gray-600">{user.email}</span>
