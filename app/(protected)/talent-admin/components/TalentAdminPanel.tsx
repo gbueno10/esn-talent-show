@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
+import { Reorder, useDragControls } from 'framer-motion'
 import { createClient } from '@/lib/supabase/client'
 import type { Room, Performer, VoteCount, RoomStatus } from '@/types/talent-show'
 
@@ -17,6 +18,118 @@ const STATUS_COLORS: Record<RoomStatus, string> = {
   intro: 'bg-blue-100 text-blue-800',
   voting: 'bg-green-100 text-green-800',
   closed: 'bg-slate-100 text-slate-600',
+}
+
+function DragHandle({ dragControls }: { dragControls: ReturnType<typeof useDragControls> }) {
+  return (
+    <button
+      className="cursor-grab active:cursor-grabbing p-1 text-slate-400 hover:text-slate-600 touch-none"
+      onPointerDown={(e) => dragControls.start(e)}
+    >
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+        <circle cx="5" cy="3" r="1.5" /><circle cx="11" cy="3" r="1.5" />
+        <circle cx="5" cy="8" r="1.5" /><circle cx="11" cy="8" r="1.5" />
+        <circle cx="5" cy="13" r="1.5" /><circle cx="11" cy="13" r="1.5" />
+      </svg>
+    </button>
+  )
+}
+
+function QueueItem({
+  performer,
+  zone,
+  isEditing,
+  editName,
+  editAct,
+  voteCount,
+  onEdit,
+  onEditNameChange,
+  onEditActChange,
+  onSave,
+  onCancelEdit,
+  onDelete,
+  onSkip,
+  onReset,
+  dragControls,
+}: {
+  performer: Performer
+  zone: 'playing' | 'next' | 'done'
+  isEditing: boolean
+  editName: string
+  editAct: string
+  voteCount: VoteCount
+  onEdit: () => void
+  onEditNameChange: (v: string) => void
+  onEditActChange: (v: string) => void
+  onSave: () => void
+  onCancelEdit: () => void
+  onDelete: () => void
+  onSkip: () => void
+  onReset: () => void
+  dragControls?: ReturnType<typeof useDragControls>
+}) {
+  if (isEditing) {
+    return (
+      <div className="p-3 bg-slate-50 rounded-xl space-y-2">
+        <input value={editName} onChange={e => onEditNameChange(e.target.value)} className="w-full px-2 py-1 border rounded-lg text-sm" />
+        <input value={editAct} onChange={e => onEditActChange(e.target.value)} placeholder="Ato" className="w-full px-2 py-1 border rounded-lg text-sm" />
+        <div className="flex gap-2">
+          <button onClick={onSave} className="px-3 py-1 bg-[var(--accent)] text-white rounded-lg text-xs">Guardar</button>
+          <button onClick={onCancelEdit} className="px-3 py-1 bg-slate-200 text-slate-600 rounded-lg text-xs">Cancelar</button>
+        </div>
+      </div>
+    )
+  }
+
+  const bgClass = zone === 'playing'
+    ? 'bg-[var(--primary)]/10 border border-[var(--primary)]/30'
+    : zone === 'done'
+    ? 'bg-slate-50 opacity-60'
+    : 'bg-slate-50'
+
+  return (
+    <div className={`flex items-center gap-2 px-3 py-2.5 rounded-xl transition-colors ${bgClass}`}>
+      {dragControls && <DragHandle dragControls={dragControls} />}
+      <div className="flex-1 min-w-0">
+        <span className="text-sm font-medium text-slate-900">{performer.name}</span>
+        {zone === 'playing' && <span className="ml-1.5 text-xs font-bold text-[var(--primary)]">NO PALCO</span>}
+        {zone === 'done' && voteCount.total > 0 && (
+          <span className="ml-1.5 text-xs text-slate-400">
+            {Math.round((voteCount.yes_count / voteCount.total) * 100)}% SIM
+          </span>
+        )}
+        {performer.act_description && <span className="text-xs text-slate-400 ml-2">{performer.act_description}</span>}
+      </div>
+      <div className="flex items-center gap-0.5 text-slate-400">
+        {zone === 'next' && (
+          <button onClick={onSkip} className="p-1 hover:text-orange-600 text-xs" title="Saltar">⏭</button>
+        )}
+        {zone === 'done' && (
+          <button onClick={onReset} className="p-1 hover:text-blue-600 text-xs" title="Voltar à fila">↩</button>
+        )}
+        {zone !== 'playing' && (
+          <>
+            <button onClick={onEdit} className="p-1 hover:text-blue-600 text-xs">✎</button>
+            <button onClick={onDelete} className="p-1 hover:text-red-600 text-xs">✕</button>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function DraggableQueueItem(props: React.ComponentProps<typeof QueueItem> & { performer: Performer }) {
+  const dragControls = useDragControls()
+  return (
+    <Reorder.Item
+      value={props.performer}
+      dragListener={false}
+      dragControls={dragControls}
+      className="list-none"
+    >
+      <QueueItem {...props} dragControls={dragControls} />
+    </Reorder.Item>
+  )
 }
 
 export default function TalentAdminPanel() {
@@ -35,6 +148,15 @@ export default function TalentAdminPanel() {
 
   const selectedRoom = rooms.find(r => r.id === selectedRoomId)
   const currentPerformer = performers.find(p => p.id === selectedRoom?.current_performer_id)
+
+  const upNext = useMemo(
+    () => performers.filter(p => !p.performed && p.id !== selectedRoom?.current_performer_id).sort((a, b) => a.display_order - b.display_order),
+    [performers, selectedRoom?.current_performer_id]
+  )
+  const done = useMemo(
+    () => performers.filter(p => p.performed),
+    [performers]
+  )
 
   const fetchRooms = useCallback(async () => {
     const res = await fetch('/api/talent_show/rooms')
@@ -77,6 +199,29 @@ export default function TalentAdminPanel() {
       .subscribe()
     return () => { supabase.removeChannel(channel) }
   }, [selectedRoomId, fetchVotes])
+
+  // Realtime room status changes
+  useEffect(() => {
+    if (!selectedRoomId) return
+    const supabase = createClient()
+    const channel = supabase
+      .channel(`admin-room-${selectedRoomId}`)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: process.env.NEXT_PUBLIC_SUPABASE_SCHEMA || 'talent_show',
+        table: 'rooms',
+        filter: `id=eq.${selectedRoomId}`,
+      }, (payload) => {
+        const updated = payload.new as Room
+        setRooms(prev => prev.map(r =>
+          r.id === updated.id ? { ...r, status: updated.status, current_performer_id: updated.current_performer_id } : r
+        ))
+        // Refetch performers to get updated `performed` flags
+        fetchPerformers()
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [selectedRoomId, fetchPerformers])
 
   // --- Actions ---
   const createRoom = async () => {
@@ -123,43 +268,68 @@ export default function TalentAdminPanel() {
     if (res.ok) fetchPerformers()
   }
 
-  const movePerformer = async (id: string, direction: 'up' | 'down') => {
-    const idx = performers.findIndex(p => p.id === id)
-    const swapIdx = direction === 'up' ? idx - 1 : idx + 1
-    if (swapIdx < 0 || swapIdx >= performers.length) return
-    await Promise.all([
-      fetch('/api/talent_show/performers', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: performers[idx].id, display_order: performers[swapIdx].display_order }),
-      }),
-      fetch('/api/talent_show/performers', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: performers[swapIdx].id, display_order: performers[idx].display_order }),
-      }),
-    ])
-    fetchPerformers()
+  const setPerformed = async (id: string, performed: boolean) => {
+    const res = await fetch('/api/talent_show/performers', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, performed }),
+    })
+    if (res.ok) fetchPerformers()
   }
 
-  const changeStatus = async (status: RoomStatus, performerId?: string | null) => {
+  const handleReorder = async (newOrder: Performer[]) => {
+    // Optimistic update
+    setPerformers(prev => {
+      const playing = prev.filter(p => p.id === selectedRoom?.current_performer_id)
+      const doneList = prev.filter(p => p.performed)
+      return [...playing, ...newOrder, ...doneList]
+    })
+
+    // Send bulk reorder
+    await fetch('/api/talent_show/performers', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        reorder: newOrder.map((p, i) => ({ id: p.id, display_order: i })),
+      }),
+    })
+  }
+
+  const changeStatus = async (status: RoomStatus) => {
     if (!selectedRoomId) return
     setError(null)
-    const body: Record<string, unknown> = { status }
-    if (performerId !== undefined) body.current_performer_id = performerId
     const res = await fetch(`/api/talent_show/rooms/${selectedRoomId}/status`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ status }),
     })
     if (res.ok) {
       const updated = await res.json()
-      setRooms(prev => prev.map(r => r.id === updated.id ? { ...r, ...updated } : r))
+      setRooms(prev => prev.map(r =>
+        r.id === updated.id
+          ? { ...r, status: updated.status, current_performer_id: updated.current_performer_id }
+          : r
+      ))
     } else setError((await res.json()).error)
   }
 
-  const selectAndIntro = (performer: Performer) => {
-    changeStatus('intro', performer.id)
+  const handleNext = async () => {
+    if (!selectedRoomId) return
+    setError(null)
+    const res = await fetch(`/api/talent_show/rooms/${selectedRoomId}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'next' }),
+    })
+    if (res.ok) {
+      const updated = await res.json()
+      setRooms(prev => prev.map(r =>
+        r.id === updated.id
+          ? { ...r, status: updated.status, current_performer_id: updated.current_performer_id }
+          : r
+      ))
+      fetchPerformers()
+    } else setError((await res.json()).error)
   }
 
   const getVoteCount = (performerId: string) =>
@@ -168,7 +338,6 @@ export default function TalentAdminPanel() {
   // --- Render ---
   if (loading) return <div className="flex items-center justify-center min-h-[60vh] text-slate-500">A carregar...</div>
 
-  // No rooms yet
   if (rooms.length === 0) {
     return (
       <div className="max-w-md mx-auto px-4 py-16 text-center">
@@ -249,31 +418,32 @@ export default function TalentAdminPanel() {
             </div>
           </div>
 
-          {/* Stage Remote Control */}
+          {/* Player Control Bar */}
           <div className="bg-slate-900 p-5 rounded-2xl text-white">
             <div className="text-xs text-slate-400 uppercase tracking-wide mb-3">Controle do Palco</div>
 
             {selectedRoom.status === 'waiting' && (
-              <div>
-                <p className="text-slate-300 text-sm mb-3">Seleciona um artista para colocar no palco:</p>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {performers.map(p => (
-                    <button
-                      key={p.id}
-                      onClick={() => selectAndIntro(p)}
-                      className="flex items-center gap-3 px-4 py-3 bg-white/10 hover:bg-white/20 rounded-xl transition-colors text-left"
-                    >
-                      <span className="text-2xl">🎭</span>
-                      <div>
-                        <div className="font-semibold">{p.name}</div>
-                        {p.act_description && <div className="text-xs text-slate-400">{p.act_description}</div>}
-                      </div>
-                    </button>
-                  ))}
-                  {performers.length === 0 && (
-                    <p className="text-slate-500 text-sm col-span-2 py-2">Adiciona artistas na lista abaixo primeiro.</p>
+              <div className="flex items-center gap-4">
+                <div className="flex-1">
+                  {upNext.length > 0 ? (
+                    <p className="text-slate-300 text-sm">
+                      Próximo: <strong>{upNext[0].name}</strong>
+                      {upNext[0].act_description && <span className="text-slate-500 ml-1">— {upNext[0].act_description}</span>}
+                      {upNext.length > 1 && <span className="text-slate-500 ml-2">(+{upNext.length - 1} na fila)</span>}
+                    </p>
+                  ) : done.length > 0 ? (
+                    <p className="text-green-400 text-sm font-semibold">Show completo! Todos os artistas já se apresentaram.</p>
+                  ) : (
+                    <p className="text-slate-500 text-sm">Adiciona artistas na fila abaixo primeiro.</p>
                   )}
                 </div>
+                <button
+                  onClick={handleNext}
+                  disabled={upNext.length === 0}
+                  className="px-6 py-3 bg-[var(--primary)] hover:opacity-90 disabled:opacity-40 text-white rounded-xl font-bold text-lg transition-opacity whitespace-nowrap"
+                >
+                  {done.length === 0 ? 'Começar Show' : 'Próximo Artista'}
+                </button>
               </div>
             )}
 
@@ -323,22 +493,35 @@ export default function TalentAdminPanel() {
             {selectedRoom.status === 'closed' && (
               <div className="flex items-center gap-4">
                 <div className="flex-1">
-                  <p className="text-slate-300 text-sm">Votação encerrada. Pronto para o próximo artista?</p>
+                  <p className="text-slate-300 text-sm">Votação encerrada para <strong>{currentPerformer?.name}</strong>.</p>
+                  {(() => {
+                    const v = currentPerformer ? getVoteCount(currentPerformer.id) : null
+                    if (!v || v.total === 0) return null
+                    const pct = Math.round((v.yes_count / v.total) * 100)
+                    return (
+                      <p className="text-sm mt-1">
+                        <span className={pct >= 50 ? 'text-green-400' : 'text-red-400'}>
+                          {pct}% SIM
+                        </span>
+                        <span className="text-slate-500 ml-2">({v.yes_count}S / {v.no_count}N — {v.total} votos)</span>
+                      </p>
+                    )
+                  })()}
                 </div>
                 <button
-                  onClick={() => changeStatus('waiting', null)}
+                  onClick={handleNext}
                   className="px-6 py-3 bg-[var(--primary)] hover:opacity-90 text-white rounded-xl font-bold text-lg transition-opacity whitespace-nowrap"
                 >
-                  Próximo Artista
+                  {upNext.length > 0 ? 'Próximo Artista' : 'Finalizar Show'}
                 </button>
               </div>
             )}
           </div>
 
-          {/* Two columns: Performers + Results */}
+          {/* Two columns: Queue + Results */}
           <div className="grid gap-4 lg:grid-cols-2">
 
-            {/* Performers Queue */}
+            {/* Queue */}
             <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
               <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">Fila de Artistas</h2>
 
@@ -367,39 +550,82 @@ export default function TalentAdminPanel() {
                 {performers.length === 0 && (
                   <p className="text-sm text-slate-400 text-center py-6">Nenhum artista adicionado</p>
                 )}
-                {performers.map((p, idx) => {
-                  const isOnStage = selectedRoom.current_performer_id === p.id
 
-                  if (editingId === p.id) {
-                    return (
-                      <div key={p.id} className="p-3 bg-slate-50 rounded-xl space-y-2">
-                        <input value={editName} onChange={e => setEditName(e.target.value)} className="w-full px-2 py-1 border rounded-lg text-sm" />
-                        <input value={editAct} onChange={e => setEditAct(e.target.value)} placeholder="Ato" className="w-full px-2 py-1 border rounded-lg text-sm" />
-                        <div className="flex gap-2">
-                          <button onClick={() => updatePerformer(p.id)} className="px-3 py-1 bg-[var(--accent)] text-white rounded-lg text-xs">Guardar</button>
-                          <button onClick={() => setEditingId(null)} className="px-3 py-1 bg-slate-200 text-slate-600 rounded-lg text-xs">Cancelar</button>
-                        </div>
-                      </div>
-                    )
-                  }
+                {/* Now Playing */}
+                {currentPerformer && (
+                  <QueueItem
+                    performer={currentPerformer}
+                    zone="playing"
+                    isEditing={editingId === currentPerformer.id}
+                    editName={editName}
+                    editAct={editAct}
+                    voteCount={getVoteCount(currentPerformer.id)}
+                    onEdit={() => { setEditingId(currentPerformer.id); setEditName(currentPerformer.name); setEditAct(currentPerformer.act_description || '') }}
+                    onEditNameChange={setEditName}
+                    onEditActChange={setEditAct}
+                    onSave={() => updatePerformer(currentPerformer.id)}
+                    onCancelEdit={() => setEditingId(null)}
+                    onDelete={() => deletePerformer(currentPerformer.id)}
+                    onSkip={() => {}}
+                    onReset={() => {}}
+                  />
+                )}
 
-                  return (
-                    <div key={p.id} className={`flex items-center gap-2 px-3 py-2.5 rounded-xl transition-colors ${isOnStage ? 'bg-[var(--primary)]/10 border border-[var(--primary)]/30' : 'bg-slate-50'}`}>
-                      <span className="text-xs text-slate-400 font-mono w-4">{idx + 1}</span>
-                      <div className="flex-1 min-w-0">
-                        <span className="text-sm font-medium text-slate-900">{p.name}</span>
-                        {isOnStage && <span className="ml-1.5 text-xs font-bold text-[var(--primary)]">NO PALCO</span>}
-                        {p.act_description && <span className="text-xs text-slate-400 ml-2">{p.act_description}</span>}
-                      </div>
-                      <div className="flex items-center gap-0.5 text-slate-400">
-                        <button onClick={() => movePerformer(p.id, 'up')} disabled={idx === 0} className="p-1 hover:text-slate-700 disabled:opacity-20 text-xs">▲</button>
-                        <button onClick={() => movePerformer(p.id, 'down')} disabled={idx === performers.length - 1} className="p-1 hover:text-slate-700 disabled:opacity-20 text-xs">▼</button>
-                        <button onClick={() => { setEditingId(p.id); setEditName(p.name); setEditAct(p.act_description || '') }} className="p-1 hover:text-blue-600 text-xs">✎</button>
-                        <button onClick={() => deletePerformer(p.id)} className="p-1 hover:text-red-600 text-xs">✕</button>
-                      </div>
-                    </div>
-                  )
-                })}
+                {/* Up Next — draggable */}
+                {upNext.length > 0 && (
+                  <>
+                    {(currentPerformer || done.length > 0) && (
+                      <div className="text-xs text-slate-400 uppercase tracking-wide pt-2 pb-1">A seguir</div>
+                    )}
+                    <Reorder.Group axis="y" values={upNext} onReorder={handleReorder} className="space-y-1.5">
+                      {upNext.map(p => (
+                        <DraggableQueueItem
+                          key={p.id}
+                          performer={p}
+                          zone="next"
+                          isEditing={editingId === p.id}
+                          editName={editName}
+                          editAct={editAct}
+                          voteCount={getVoteCount(p.id)}
+                          onEdit={() => { setEditingId(p.id); setEditName(p.name); setEditAct(p.act_description || '') }}
+                          onEditNameChange={setEditName}
+                          onEditActChange={setEditAct}
+                          onSave={() => updatePerformer(p.id)}
+                          onCancelEdit={() => setEditingId(null)}
+                          onDelete={() => deletePerformer(p.id)}
+                          onSkip={() => setPerformed(p.id, true)}
+                          onReset={() => {}}
+                        />
+                      ))}
+                    </Reorder.Group>
+                  </>
+                )}
+
+                {/* Already Performed */}
+                {done.length > 0 && (
+                  <>
+                    <div className="text-xs text-slate-400 uppercase tracking-wide pt-2 pb-1">Já se apresentaram</div>
+                    {done.map(p => (
+                      <QueueItem
+                        key={p.id}
+                        performer={p}
+                        zone="done"
+                        isEditing={editingId === p.id}
+                        editName={editName}
+                        editAct={editAct}
+                        voteCount={getVoteCount(p.id)}
+                        onEdit={() => { setEditingId(p.id); setEditName(p.name); setEditAct(p.act_description || '') }}
+                        onEditNameChange={setEditName}
+                        onEditActChange={setEditAct}
+                        onSave={() => updatePerformer(p.id)}
+                        onCancelEdit={() => setEditingId(null)}
+                        onDelete={() => deletePerformer(p.id)}
+                        onSkip={() => {}}
+                        onReset={() => setPerformed(p.id, false)}
+                      />
+                    ))}
+                  </>
+                )}
               </div>
             </div>
 
@@ -410,27 +636,35 @@ export default function TalentAdminPanel() {
                 <p className="text-sm text-slate-400 text-center py-6">Adiciona artistas para ver votos</p>
               ) : (
                 <div className="space-y-3">
-                  {performers.map(p => {
-                    const v = getVoteCount(p.id)
-                    const pct = v.total > 0 ? Math.round((v.yes_count / v.total) * 100) : 0
-                    const isOnStage = selectedRoom.current_performer_id === p.id
-                    return (
-                      <div key={p.id} className={`p-3 rounded-xl ${isOnStage ? 'bg-[var(--primary)]/5 border border-[var(--primary)]/20' : 'bg-slate-50'}`}>
-                        <div className="flex items-center justify-between mb-1.5">
-                          <span className="text-sm font-medium text-slate-900">{p.name}</span>
-                          <span className="text-xs text-slate-400">{v.total} votos</span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <div className="flex-1 h-2.5 bg-slate-200 rounded-full overflow-hidden">
-                            <div className="h-full bg-green-500 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
+                  {[...performers]
+                    .sort((a, b) => {
+                      const va = getVoteCount(a.id)
+                      const vb = getVoteCount(b.id)
+                      const pctA = va.total > 0 ? va.yes_count / va.total : -1
+                      const pctB = vb.total > 0 ? vb.yes_count / vb.total : -1
+                      return pctB - pctA
+                    })
+                    .map(p => {
+                      const v = getVoteCount(p.id)
+                      const pct = v.total > 0 ? Math.round((v.yes_count / v.total) * 100) : 0
+                      const isOnStage = selectedRoom.current_performer_id === p.id
+                      return (
+                        <div key={p.id} className={`p-3 rounded-xl ${isOnStage ? 'bg-[var(--primary)]/5 border border-[var(--primary)]/20' : 'bg-slate-50'}`}>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="text-sm font-medium text-slate-900">{p.name}</span>
+                            <span className="text-xs text-slate-400">{v.total} votos</span>
                           </div>
-                          <span className={`text-sm font-bold w-12 text-right ${pct >= 50 ? 'text-green-600' : pct > 0 ? 'text-red-500' : 'text-slate-400'}`}>
-                            {v.total > 0 ? `${pct}%` : '--'}
-                          </span>
+                          <div className="flex items-center gap-3">
+                            <div className="flex-1 h-2.5 bg-slate-200 rounded-full overflow-hidden">
+                              <div className="h-full bg-green-500 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
+                            </div>
+                            <span className={`text-sm font-bold w-12 text-right ${pct >= 50 ? 'text-green-600' : pct > 0 ? 'text-red-500' : 'text-slate-400'}`}>
+                              {v.total > 0 ? `${pct}%` : '--'}
+                            </span>
+                          </div>
                         </div>
-                      </div>
-                    )
-                  })}
+                      )
+                    })}
                 </div>
               )}
             </div>

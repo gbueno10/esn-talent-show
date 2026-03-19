@@ -88,6 +88,7 @@ export async function PUT(request: Request) {
   if (body.name !== undefined) updates.name = body.name
   if (body.act_description !== undefined) updates.act_description = body.act_description
   if (body.display_order !== undefined) updates.display_order = body.display_order
+  if (body.performed !== undefined) updates.performed = body.performed
 
   const { data, error } = await supabase
     .from('performers')
@@ -101,6 +102,47 @@ export async function PUT(request: Request) {
   }
 
   return NextResponse.json(data)
+}
+
+export async function PATCH(request: Request) {
+  const supabase = await createClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  const isAdmin = await isProjectAdmin()
+  if (!isAdmin) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  const body = await request.json()
+  if (!Array.isArray(body.reorder) || body.reorder.length === 0) {
+    return NextResponse.json({ error: 'reorder array is required' }, { status: 400 })
+  }
+
+  const errors: string[] = []
+  for (const item of body.reorder) {
+    if (!item.id || typeof item.display_order !== 'number') {
+      errors.push(`Invalid item: ${JSON.stringify(item)}`)
+      continue
+    }
+    const { error } = await supabase
+      .from('performers')
+      .update({ display_order: item.display_order })
+      .eq('id', item.id)
+
+    if (error) {
+      errors.push(`Failed to update ${item.id}: ${error.message}`)
+    }
+  }
+
+  if (errors.length > 0) {
+    return NextResponse.json({ error: errors.join('; ') }, { status: 500 })
+  }
+
+  return NextResponse.json({ success: true })
 }
 
 export async function DELETE(request: Request) {

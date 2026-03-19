@@ -48,6 +48,7 @@ CREATE TABLE talent_show.performers (
   name text NOT NULL,
   act_description text,
   display_order integer NOT NULL DEFAULT 0,
+  performed boolean NOT NULL DEFAULT false,
   created_at timestamptz DEFAULT now() NOT NULL
 );
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import confetti from 'canvas-confetti'
 import { createClient } from '@/lib/supabase/client'
@@ -24,8 +24,12 @@ export default function HostScreen({ initialRoom }: HostScreenProps) {
   const [reactions, setReactions] = useState<{ id: number; emoji: string; nickname: string }[]>([])
   const [showConfetti, setShowConfetti] = useState(false)
 
-  const supabase = createClient()
+  const supabase = useRef(createClient()).current
+  const voteCountsRef = useRef(voteCounts)
+  voteCountsRef.current = voteCounts
+
   const currentPerformer = performers.find(p => p.id === room.current_performer_id) || null
+  const joinUrl = typeof window !== 'undefined' ? `${window.location.origin}/play?pin=${room.pin}` : ''
 
   // Fetch vote counts for current performer
   const fetchVotes = useCallback(async () => {
@@ -68,7 +72,7 @@ export default function HostScreen({ initialRoom }: HostScreenProps) {
 
           // Trigger confetti when closing and YES wins
           if (updated.status === 'closed' && previousStatus === 'voting') {
-            if (voteCounts.yes_count > voteCounts.no_count) {
+            if (voteCountsRef.current.yes_count > voteCountsRef.current.no_count) {
               setShowConfetti(true)
               setTimeout(() => setShowConfetti(false), 5000)
             }
@@ -83,7 +87,22 @@ export default function HostScreen({ initialRoom }: HostScreenProps) {
       .subscribe()
 
     return () => { supabase.removeChannel(channel) }
-  }, [room.id, room.status, voteCounts.yes_count, voteCounts.no_count, supabase])
+  }, [room.id, supabase])
+
+  // Polling fallback — syncs room state every 5s in case realtime drops
+  useEffect(() => {
+    const poll = async () => {
+      const { data } = await supabase
+        .from('rooms')
+        .select('*')
+        .eq('id', room.id)
+        .single()
+      if (data) setRoom(prev => ({ ...prev, ...data }))
+    }
+
+    const interval = setInterval(poll, 5000)
+    return () => clearInterval(interval)
+  }, [room.id, supabase])
 
   // Subscribe to votes
   useEffect(() => {
@@ -137,6 +156,25 @@ export default function HostScreen({ initialRoom }: HostScreenProps) {
     return () => { supabase.removeChannel(channel) }
   }, [room.id, supabase])
 
+  // Small QR code + PIN badge (always visible in corner)
+  const qrBadge = (
+    <div className="absolute top-6 right-6 flex items-center gap-3 bg-white/10 backdrop-blur-sm rounded-2xl p-3 z-30">
+      <div className="bg-white p-2 rounded-xl">
+        <QRCodeSVG
+          value={joinUrl}
+          size={64}
+          level="M"
+          bgColor="#ffffff"
+          fgColor="#000000"
+        />
+      </div>
+      <div className="text-right">
+        <p className="text-xs text-gray-400 uppercase tracking-widest">PIN</p>
+        <p className="text-2xl font-black tracking-[0.15em]">{room.pin}</p>
+      </div>
+    </div>
+  )
+
   return (
     <div className="relative min-h-screen bg-black text-white flex flex-col items-center justify-center overflow-hidden">
       {/* Emoji overlay */}
@@ -145,14 +183,15 @@ export default function HostScreen({ initialRoom }: HostScreenProps) {
       {/* Trigger confetti effect */}
       {showConfetti && <ConfettiEffect />}
 
-      {/* Waiting */}
+      {/* Waiting — full join screen */}
       {room.status === 'waiting' && (
         <div className="text-center">
-          <h1 className="text-6xl font-bold mb-10">ESN Talent Show</h1>
+          <h1 className="text-7xl font-bold mb-4">ESN Talent Show</h1>
+          <p className="text-xl text-gray-500 mb-12">Scan to join and vote live!</p>
           <div className="flex items-center justify-center gap-10">
             <div className="bg-white p-5 rounded-3xl">
               <QRCodeSVG
-                value={`${typeof window !== 'undefined' ? window.location.origin : ''}/play?pin=${room.pin}`}
+                value={joinUrl}
                 size={200}
                 level="M"
                 bgColor="#ffffff"
@@ -160,69 +199,91 @@ export default function HostScreen({ initialRoom }: HostScreenProps) {
               />
             </div>
             <div className="text-left">
-              <p className="text-gray-500 text-lg mb-2 uppercase tracking-widest">Scan to join</p>
+              <p className="text-gray-500 text-lg mb-2 uppercase tracking-widest">Enter PIN</p>
               <p className="text-8xl font-black tracking-[0.3em]">{room.pin}</p>
-              <p className="text-gray-600 mt-3 text-lg">or go to the app and enter the PIN</p>
             </div>
           </div>
+          {performers.length > 0 && (
+            <div className="mt-16">
+              <p className="text-gray-600 text-sm uppercase tracking-widest mb-4">Lineup</p>
+              <div className="flex flex-wrap justify-center gap-3">
+                {performers.map(p => (
+                  <span key={p.id} className="px-4 py-2 bg-white/5 rounded-full text-gray-400 text-sm">
+                    {p.name}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      {/* Intro */}
+      {/* Intro — performer spotlight */}
       {room.status === 'intro' && currentPerformer && (
-        <div className="text-center animate-[fadeIn_0.8s_ease-out]">
-          <p className="text-gray-500 text-xl mb-4 uppercase tracking-widest">Now on stage</p>
-          <h1 className="text-8xl font-bold mb-6">{currentPerformer.name}</h1>
-          {currentPerformer.act_description && (
-            <p className="text-3xl text-gray-400">{currentPerformer.act_description}</p>
-          )}
-        </div>
+        <>
+          {qrBadge}
+          <div className="text-center animate-[fadeIn_0.8s_ease-out] px-8">
+            <p className="text-gray-500 text-2xl mb-6 uppercase tracking-[0.3em]">Now on stage</p>
+            <h1 className="text-9xl font-black mb-6 leading-tight">{currentPerformer.name}</h1>
+            {currentPerformer.act_description && (
+              <p className="text-4xl text-gray-400 font-light">{currentPerformer.act_description}</p>
+            )}
+          </div>
+        </>
       )}
 
       {/* Voting */}
       {room.status === 'voting' && currentPerformer && (
-        <div className="w-full max-w-4xl px-8">
-          <div className="text-center mb-12">
-            <p className="text-green-400 text-xl font-semibold uppercase tracking-widest mb-2">
-              Vote Now!
-            </p>
-            <h1 className="text-5xl font-bold">{currentPerformer.name}</h1>
-          </div>
+        <>
+          {qrBadge}
+          <div className="w-full max-w-4xl px-8">
+            <div className="text-center mb-10">
+              <p className="text-green-400 text-2xl font-semibold uppercase tracking-[0.3em] mb-3 animate-pulse">
+                Vote Now!
+              </p>
+              <h1 className="text-7xl font-black">{currentPerformer.name}</h1>
+              {currentPerformer.act_description && (
+                <p className="text-2xl text-gray-500 mt-3">{currentPerformer.act_description}</p>
+              )}
+            </div>
 
-          <VoteBar voteCounts={voteCounts} />
+            <VoteBar voteCounts={voteCounts} />
 
-          <div className="text-center mt-8">
-            <p className="text-gray-600 text-lg">
-              {voteCounts.total} vote{voteCounts.total !== 1 ? 's' : ''}
-            </p>
+            <div className="text-center mt-8">
+              <p className="text-gray-600 text-xl">
+                {voteCounts.total} vote{voteCounts.total !== 1 ? 's' : ''}
+              </p>
+            </div>
           </div>
-        </div>
+        </>
       )}
 
-      {/* Closed */}
-      {room.status === 'closed' && (
-        <div className="text-center">
-          {currentPerformer && (
-            <>
-              <h1 className="text-5xl font-bold mb-8">{currentPerformer.name}</h1>
-              <VoteBar voteCounts={voteCounts} />
-              <div className="mt-8">
-                <p className="text-4xl font-bold">
-                  {voteCounts.yes_count > voteCounts.no_count ? (
-                    <span className="text-green-400">YES WINS! 🎉</span>
-                  ) : voteCounts.no_count > voteCounts.yes_count ? (
-                    <span className="text-red-400">NO WINS</span>
-                  ) : (
-                    <span className="text-yellow-400">TIE!</span>
-                  )}
-                </p>
-                <p className="text-gray-500 text-xl mt-4">
-                  {voteCounts.yes_count} Yes vs {voteCounts.no_count} No ({voteCounts.total} total)
-                </p>
-              </div>
-            </>
-          )}
-        </div>
+      {/* Closed — results */}
+      {room.status === 'closed' && currentPerformer && (
+        <>
+          {qrBadge}
+          <div className="text-center w-full max-w-4xl px-8">
+            <h1 className="text-7xl font-black mb-4">{currentPerformer.name}</h1>
+            {currentPerformer.act_description && (
+              <p className="text-2xl text-gray-500 mb-8">{currentPerformer.act_description}</p>
+            )}
+            <VoteBar voteCounts={voteCounts} />
+            <div className="mt-10">
+              <p className="text-5xl font-bold">
+                {voteCounts.yes_count > voteCounts.no_count ? (
+                  <span className="text-green-400">YES WINS! 🎉</span>
+                ) : voteCounts.no_count > voteCounts.yes_count ? (
+                  <span className="text-red-400">NO WINS</span>
+                ) : (
+                  <span className="text-yellow-400">TIE!</span>
+                )}
+              </p>
+              <p className="text-gray-500 text-xl mt-4">
+                {voteCounts.yes_count} Yes vs {voteCounts.no_count} No ({voteCounts.total} total)
+              </p>
+            </div>
+          </div>
+        </>
       )}
     </div>
   )

@@ -1,37 +1,35 @@
-import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
 export async function POST(request: Request) {
-  const supabase = await createClient()
-
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    return NextResponse.json(
-      { error: 'You must be signed in to vote. Please refresh the page.' },
-      { status: 401 }
-    )
-  }
-
   const body = await request.json()
-  if (!body.performer_id || typeof body.vote !== 'boolean') {
+
+  if (!body.performer_id || typeof body.vote !== 'boolean' || !body.voter_id) {
     return NextResponse.json(
-      { error: 'performer_id and vote (boolean) are required' },
+      { error: 'performer_id, voter_id and vote (boolean) are required' },
       { status: 400 }
     )
   }
+
+  // Basic UUID format validation
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  if (!uuidRegex.test(body.voter_id)) {
+    return NextResponse.json({ error: 'Invalid voter_id format' }, { status: 400 })
+  }
+
+  const supabase = createServiceClient()
 
   const { data, error } = await supabase
     .from('votes')
     .insert({
       performer_id: body.performer_id,
-      user_id: user.id,
+      user_id: body.voter_id,
       vote: body.vote,
     })
     .select()
     .single()
 
   if (error) {
-    // Unique constraint violation = already voted
     if (error.code === '23505') {
       return NextResponse.json(
         { error: 'You have already voted for this performer.' },

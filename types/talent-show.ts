@@ -15,6 +15,7 @@ export interface Performer {
   name: string
   act_description: string | null
   display_order: number
+  performed: boolean
   created_at: string
 }
 

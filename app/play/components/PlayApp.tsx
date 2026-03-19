@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { Room, Performer, RoomStatus } from '@/types/talent-show'
 import WaitingScreen from './WaitingScreen'
@@ -15,24 +15,66 @@ export default function PlayApp() {
     }
     return ''
   })
-  const [nickname, setNickname] = useState('')
+  const [voterId] = useState(() => {
+    if (typeof window === 'undefined') return ''
+    const stored = localStorage.getItem('esn_voter_id')
+    if (stored) return stored
+    const id = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+          const r = Math.random() * 16 | 0
+          return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16)
+        })
+    localStorage.setItem('esn_voter_id', id)
+    return id
+  })
+  const [nickname, setNickname] = useState(() =>
+    typeof window !== 'undefined' ? localStorage.getItem('esn_nickname') || '' : ''
+  )
   const [room, setRoom] = useState<Room | null>(null)
   const [performers, setPerformers] = useState<Performer[]>([])
   const [joined, setJoined] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const supabase = createClient()
+  const supabase = useRef(createClient()).current
 
   const currentPerformer = performers.find(p => p.id === room?.current_performer_id) || null
 
-  // Anonymous sign-in
-  const ensureAuth = useCallback(async () => {
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) {
-      await supabase.auth.signInAnonymously()
+  const doJoin = async (joinPin: string) => {
+    const res = await fetch('/api/talent_show/join', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pin: joinPin.trim() }),
+    })
+    if (!res.ok) {
+      const data = await res.json()
+      throw new Error(data.error || 'Failed to join room')
     }
-  }, [supabase])
+    return res.json()
+  }
+
+  // Auto-restore session on mount
+  useEffect(() => {
+    const savedPin = localStorage.getItem('esn_room_pin')
+    const savedNickname = localStorage.getItem('esn_nickname')
+    if (!savedPin || !savedNickname) return
+
+    setLoading(true)
+    doJoin(savedPin)
+      .then(data => {
+        setPin(savedPin)
+        setRoom(data)
+        setPerformers(data.performers || [])
+        setJoined(true)
+      })
+      .catch(() => {
+        // Room no longer valid — clear saved session
+        localStorage.removeItem('esn_room_pin')
+      })
+      .finally(() => setLoading(false))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const joinRoom = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -42,29 +84,14 @@ export default function PlayApp() {
     setError(null)
 
     try {
-      const res = await fetch('/api/talent_show/join', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin: pin.trim() }),
-      })
-
-      if (!res.ok) {
-        const data = await res.json()
-        setError(data.error || 'Failed to join room')
-        setLoading(false)
-        return
-      }
-
-      const data = await res.json()
+      const data = await doJoin(pin)
       setRoom(data)
       setPerformers(data.performers || [])
-
-      // Ensure anonymous auth
-      await ensureAuth()
-
+      localStorage.setItem('esn_room_pin', pin.trim())
+      localStorage.setItem('esn_nickname', nickname.trim())
       setJoined(true)
-    } catch {
-      setError('Connection error. Please try again.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Connection error. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -94,7 +121,24 @@ export default function PlayApp() {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [room?.id, supabase, room])
+  }, [room?.id, supabase])
+
+  // Polling fallback — syncs room state every 5s in case realtime drops
+  useEffect(() => {
+    if (!room) return
+
+    const poll = async () => {
+      const { data } = await supabase
+        .from('rooms')
+        .select('*')
+        .eq('id', room.id)
+        .single()
+      if (data) setRoom(prev => prev ? { ...prev, ...data } : null)
+    }
+
+    const interval = setInterval(poll, 5000)
+    return () => clearInterval(interval)
+  }, [room?.id, supabase])
 
   // Join screen
   if (!joined) {
@@ -159,6 +203,7 @@ export default function PlayApp() {
         performer={currentPerformer}
         roomId={room.id}
         nickname={nickname}
+        voterId={voterId}
       />
     ),
     closed: <ClosedScreen />,

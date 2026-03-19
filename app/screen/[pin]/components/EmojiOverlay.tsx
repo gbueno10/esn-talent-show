@@ -1,5 +1,7 @@
 'use client'
 
+import { useMemo } from 'react'
+
 interface Reaction {
   id: number
   emoji: string
@@ -13,24 +15,9 @@ interface EmojiOverlayProps {
 export default function EmojiOverlay({ reactions }: EmojiOverlayProps) {
   return (
     <div className="fixed inset-0 pointer-events-none z-40 overflow-hidden">
-      {reactions.map(reaction => {
-        // Random horizontal position
-        const left = Math.random() * 90 + 5
-        const duration = 2 + Math.random() * 1.5
-
-        return (
-          <div
-            key={reaction.id}
-            className="absolute bottom-0 animate-[floatUp_var(--duration)_ease-out_forwards]"
-            style={{
-              left: `${left}%`,
-              '--duration': `${duration}s`,
-            } as React.CSSProperties}
-          >
-            <span className="text-5xl">{reaction.emoji}</span>
-          </div>
-        )
-      })}
+      {reactions.map(reaction => (
+        <FloatingEmoji key={reaction.id} reaction={reaction} />
+      ))}
 
       <style jsx>{`
         @keyframes floatUp {
@@ -47,6 +34,26 @@ export default function EmojiOverlay({ reactions }: EmojiOverlayProps) {
           }
         }
       `}</style>
+    </div>
+  )
+}
+
+function FloatingEmoji({ reaction }: { reaction: Reaction }) {
+  const style = useMemo(() => {
+    const left = Math.random() * 90 + 5
+    const duration = 2 + Math.random() * 1.5
+    return {
+      left: `${left}%`,
+      '--duration': `${duration}s`,
+    } as React.CSSProperties
+  }, [])
+
+  return (
+    <div
+      className="absolute bottom-0 animate-[floatUp_var(--duration)_ease-out_forwards]"
+      style={style}
+    >
+      <span className="text-5xl">{reaction.emoji}</span>
     </div>
   )
 }

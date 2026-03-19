@@ -8,11 +8,12 @@ interface VotingScreenProps {
   performer: Performer | null
   roomId: string
   nickname: string
+  voterId: string
 }
 
-const REACTION_EMOJIS = ['👏', '🔥', '❤️', '😍', '🎉']
+const REACTION_EMOJIS = ['👏', '🔥', '❤️', '😍', '🎉', '🤮']
 
-export default function VotingScreen({ performer, roomId, nickname }: VotingScreenProps) {
+export default function VotingScreen({ performer, roomId, nickname, voterId }: VotingScreenProps) {
   const [voted, setVoted] = useState(false)
   const [voteValue, setVoteValue] = useState<boolean | null>(null)
   const [voting, setVoting] = useState(false)
@@ -36,7 +37,7 @@ export default function VotingScreen({ performer, roomId, nickname }: VotingScre
       const res = await fetch('/api/talent_show/vote', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ performer_id: performer.id, vote }),
+        body: JSON.stringify({ performer_id: performer.id, vote, voter_id: voterId }),
       })
 
       if (res.ok) {

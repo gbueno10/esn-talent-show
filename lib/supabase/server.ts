@@ -1,7 +1,20 @@
 import { createServerClient } from '@supabase/ssr'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 
 const SCHEMA = process.env.NEXT_PUBLIC_SUPABASE_SCHEMA || 'public'
+
+/**
+ * Create a service role client that bypasses RLS.
+ * Use only in server-side API routes for trusted operations.
+ */
+export function createServiceClient() {
+  return createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { db: { schema: SCHEMA } }
+  )
+}
 
 export async function createClient() {
   const cookieStore = await cookies()
